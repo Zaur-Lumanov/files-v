@@ -13,6 +13,10 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	version = "1.0.0"
+)
+
 // readPassword запрашивает ввод пароля без отображения символов на экране
 func readPassword(prompt string) (string, error) {
 	fmt.Print(prompt)
@@ -31,11 +35,12 @@ func readPassword(prompt string) (string, error) {
 // Run запускает приложение и возвращает код выхода
 func Run(targetDir string) int {
 	var (
-		showHelp  bool
-		directory string
-		decrypt   bool
-		key       string
-		useZip    bool
+		showHelp    bool
+		showVersion bool
+		directory   string
+		decrypt     bool
+		key         string
+		useZip      bool
 	)
 
 	// Создаем новый FlagSet для корректной обработки флагов
@@ -43,6 +48,8 @@ func Run(targetDir string) int {
 
 	// Парсинг флагов
 	flagSet.BoolVar(&showHelp, "help", false, "Показать справку")
+	flagSet.BoolVar(&showVersion, "v", false, "Показать версию")
+	flagSet.BoolVar(&showVersion, "version", false, "Показать версию")
 	flagSet.StringVar(&directory, "dir", targetDir, "Директория для работы (перезаписывает аргумент командной строки)")
 	flagSet.BoolVar(&decrypt, "d", false, "Режим расшифровки")
 	flagSet.BoolVar(&decrypt, "decrypt", false, "Режим расшифровки")
@@ -61,6 +68,11 @@ func Run(targetDir string) int {
 
 	if showHelp {
 		printHelp()
+		return 0
+	}
+
+	if showVersion {
+		fmt.Printf("Files-V версия %s\n", version)
 		return 0
 	}
 
@@ -211,6 +223,7 @@ func printHelp() {
 	fmt.Println("  files-v <директория_или_файл> [опции]")
 	fmt.Println("\nОпции:")
 	fmt.Println("  -help       Показать справку")
+	fmt.Println("  -v, -version Показать версию")
 	fmt.Println("  -dir        Директория для работы (перезаписывает аргумент командной строки)")
 	fmt.Println("  -d, -decrypt Режим расшифровки")
 	fmt.Println("  -p, -password Пароль для шифрования/расшифровки (если не указан, будет запрошен)")
