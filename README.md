@@ -49,37 +49,69 @@ Files-V - это утилита командной строки для рабо�
 
 ## Установка
 
+### Через go install (рекомендуется)
 ```bash
+# Установка последней версии
+go install github.com/Zaur-Lumanov/files-v/cmd/files-v@latest
+
+# Установка конкретной версии
+go install github.com/Zaur-Lumanov/files-v/cmd/files-v@v1.0.0
+```
+
+### Через go get
+```bash
+# Установка в текущий проект
 go get github.com/Zaur-Lumanov/files-v
+```
+
+### Из исходного кода
+```bash
+# Клонирование репозитория
+git clone https://github.com/Zaur-Lumanov/files-v.git
+cd files-v
+
+# Сборка бинарного файла
+go build -o files-v ./cmd/files-v
+
+# Установка в систему (опционально)
+sudo mv files-v /usr/local/bin/
+```
+
+После установки через `go install` или `go get`, бинарный файл `files-v` будет доступен в `$GOPATH/bin` или `$GOBIN`. Убедитесь, что эта директория добавлена в переменную окружения `PATH`:
+
+```bash
+# Добавление в PATH (для bash/zsh)
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# Для fish
+echo 'set -gx PATH $PATH (go env GOPATH)/bin' >> ~/.config/fish/config.fish
+source ~/.config/fish/config.fish
 ```
 
 ## Использование
 
 ```bash
-# Просмотр указанной директории (обязательный аргумент)
-files-v <путь_к_директории>
+# Проверка установки
+files-v --version
 
-# Примеры шифрования
-files-v /home/user/documents  # будет запрошен пароль шифрования
-files-v /home/user/documents -p mykey123  # с указанием пароля
-files-v .                    # создаст __fv__files-v внутри текущей директории
+# Просмотр справки
+files-v --help
 
-# ZIP-архивация и шифрование
-files-v /home/user/documents -z  # создаст documents.zip.efv, будет запрошен пароль
-files-v /home/user/documents -z -p mykey123  # с указанием пароля
+# Шифрование директории
+files-v /path/to/directory
 
-# Режим расшифровки
-files-v __fv__documents      # будет запрошен пароль расшифровки
-files-v __fv__documents --password mykey123  # с указанием пароля
-files-v documents -d         # будет запрошен пароль расшифровки
-files-v documents -d -p mykey123  # расшифровка с указанным паролем
+# Шифрование с указанием пароля
+files-v /path/to/directory -p "your-password"
 
-# Расшифровка и распаковка ZIP-архива
-files-v /home/user/documents.zip.efv  # будет запрошен пароль, извлечет в директорию documents
-files-v /home/user/documents.zip.efv -p mykey123  # с указанием пароля
+# Шифрование с созданием ZIP-архива
+files-v /path/to/directory -z
 
-# Использование флагов
-files-v <путь_к_директории> --help
+# Расшифровка директории
+files-v /path/to/__fv__directory -d
+
+# Расшифровка ZIP-архива
+files-v /path/to/directory.zip.efv
 ```
 
 ## Разработка

@@ -11,7 +11,8 @@ all: clean build-all
 # Сборка для текущей ОС и архитектуры
 build:
 	@echo "Сборка для текущей платформы..."
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/files-v
+	@mkdir -p $(BUILD_DIR)
+	@go build -o $(BUILD_DIR)/$(BINARY_NAME) .
 	@echo "Готово! Бинарник создан: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # Сборка для всех поддерживаемых платформ
