@@ -8,8 +8,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/yourusername/files-v/internal/file"
-	"github.com/yourusername/files-v/pkg/utils"
+	"github.com/Zaur-Lumanov/files-v/internal/file"
+	"github.com/Zaur-Lumanov/files-v/pkg/utils"
 	"golang.org/x/term"
 )
 

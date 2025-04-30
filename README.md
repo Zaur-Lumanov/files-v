@@ -50,7 +50,7 @@ Files-V - это утилита командной строки для рабо�
 ## Установка
 
 ```bash
-go get github.com/yourusername/files-v
+go get github.com/Zaur-Lumanov/files-v
 ```
 
 ## Использование
@@ -85,8 +85,7 @@ files-v <путь_к_директории> --help
 ## Разработка
 
 ```bash
-# Клонирование репозитория
-git clone https://github.com/yourusername/files-v.git
+git clone https://github.com/Zaur-Lumanov/files-v.git
 cd files-v
 
 # Запуск приложения с указанием директории (обязательно)

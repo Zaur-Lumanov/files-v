@@ -36,6 +36,7 @@ type Algorithm struct {
 
 // EncryptionPrinciple описывает принцип шифрования
 type EncryptionPrinciple struct {
+	Version    uint8       // Версия принципа шифрования
 	Algorithms []Algorithm // Последовательность алгоритмов
 	Passes     uint8       // Количество проходов
 }
@@ -43,6 +44,7 @@ type EncryptionPrinciple struct {
 // NewDefaultPrinciple создает принцип шифрования по умолчанию
 func NewDefaultPrinciple() *EncryptionPrinciple {
 	return &EncryptionPrinciple{
+		Version: 1, // Версия 1 - текущий принцип шифрования
 		Algorithms: []Algorithm{
 			{
 				Type: AlgorithmAES256,
@@ -55,12 +57,13 @@ func NewDefaultPrinciple() *EncryptionPrinciple {
 
 // Bytes возвращает байтовое представление принципа шифрования
 func (p *EncryptionPrinciple) Bytes() []byte {
-	// Формат: [количество алгоритмов(1)] [алгоритм1(2)] [алгоритм2(2)] ... [количество проходов(1)]
-	result := make([]byte, 1+len(p.Algorithms)*2+1)
-	result[0] = byte(len(p.Algorithms))
+	// Формат: [версия(1)] [количество алгоритмов(1)] [алгоритм1(2)] [алгоритм2(2)] ... [количество проходов(1)]
+	result := make([]byte, 1+1+len(p.Algorithms)*2+1)
+	result[0] = p.Version
+	result[1] = byte(len(p.Algorithms))
 	for i, alg := range p.Algorithms {
-		result[1+i*2] = byte(alg.Type)
-		result[1+i*2+1] = byte(alg.Mode)
+		result[2+i*2] = byte(alg.Type)
+		result[2+i*2+1] = byte(alg.Mode)
 	}
 	result[len(result)-1] = p.Passes
 	return result
@@ -138,24 +141,29 @@ func ParsePrinciple(s string) (*EncryptionPrinciple, error) {
 
 // ParsePrincipleBytes парсит байтовое представление принципа шифрования
 func ParsePrincipleBytes(data []byte) (*EncryptionPrinciple, error) {
-	if len(data) < 4 {
+	if len(data) < 5 { // Минимум: версия(1) + количество алгоритмов(1) + один алгоритм(2) + проходы(1)
 		return nil, fmt.Errorf("недостаточно данных для парсинга принципа шифрования")
 	}
 
-	// Формат: [количество алгоритмов(1)] [алгоритм1(2)] [алгоритм2(2)] ... [количество проходов(1)]
-	numAlgorithms := int(data[0])
+	version := uint8(data[0])
+	if version != 1 {
+		return nil, fmt.Errorf("неподдерживаемая версия принципа шифрования: %d", version)
+	}
+
+	// Формат: [версия(1)] [количество алгоритмов(1)] [алгоритм1(2)] [алгоритм2(2)] ... [количество проходов(1)]
+	numAlgorithms := int(data[1])
 	if numAlgorithms == 0 {
 		return nil, fmt.Errorf("количество алгоритмов не может быть нулевым")
 	}
 
 	algorithms := make([]Algorithm, 0, numAlgorithms)
 	for i := 0; i < numAlgorithms; i++ {
-		if 1+i*2+1 >= len(data) {
+		if 2+i*2+1 >= len(data) {
 			return nil, fmt.Errorf("недостаточно данных для парсинга алгоритма %d", i)
 		}
 		algorithms = append(algorithms, Algorithm{
-			Type: AlgorithmType(data[1+i*2]),
-			Mode: Mode(data[1+i*2+1]),
+			Type: AlgorithmType(data[2+i*2]),
+			Mode: Mode(data[2+i*2+1]),
 		})
 	}
 
@@ -165,6 +173,7 @@ func ParsePrincipleBytes(data []byte) (*EncryptionPrinciple, error) {
 	}
 
 	return &EncryptionPrinciple{
+		Version:    version,
 		Algorithms: algorithms,
 		Passes:     passes,
 	}, nil

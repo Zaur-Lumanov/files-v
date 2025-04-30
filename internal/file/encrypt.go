@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yourusername/files-v/internal/crypto"
+	"github.com/Zaur-Lumanov/files-v/internal/crypto"
 )
 
 // Magic signature для зашифрованных файлов
@@ -68,7 +68,7 @@ func EncryptData(data []byte) ([]byte, error) {
 	header := make([]byte, 64)
 	copy(header[:8], magicSignature)
 
-	// Записываем принцип шифрования
+	// Записываем принцип шифрования (версия + алгоритмы + количество проходов)
 	principleBytes := currentPrinciple.Bytes()
 	if len(principleBytes) > 4 {
 		return nil, fmt.Errorf("размер принципа шифрования слишком большой: %d > 4", len(principleBytes))
