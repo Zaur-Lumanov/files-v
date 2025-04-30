@@ -1,8 +1,6 @@
 package file
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -11,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/yourusername/files-v/internal/crypto"
 )
 
 // Magic signature для зашифрованных файлов
@@ -18,6 +18,9 @@ var magicSignature = []byte{0xFE, 0xED, 0xFA, 0xCE, 0xCA, 0xFE, 0xDE, 0xAD}
 
 // encryptionKey - хранит текущий ключ шифрования
 var encryptionKey = ""
+
+// currentPrinciple - хранит текущий принцип шифрования
+var currentPrinciple *crypto.EncryptionPrinciple
 
 // EncryptError отслеживает ошибки при шифровании
 var EncryptError struct {
@@ -42,6 +45,11 @@ func SetEncryptionKey(key string) {
 	encryptionKey = key
 }
 
+// SetEncryptionPrinciple устанавливает принцип шифрования
+func SetEncryptionPrinciple(principle *crypto.EncryptionPrinciple) {
+	currentPrinciple = principle
+}
+
 // GetPaddedKey возвращает ключ расширенный до 32 байт для AES-256
 func GetPaddedKey() []byte {
 	key := []byte(encryptionKey)
@@ -50,64 +58,74 @@ func GetPaddedKey() []byte {
 	return paddedKey
 }
 
-// EncryptData шифрует содержимое файла с использованием AES-256
+// EncryptData шифрует содержимое файла с использованием указанного принципа
 func EncryptData(data []byte) ([]byte, error) {
-	// Получаем расширенный ключ для AES-256
-	paddedKey := GetPaddedKey()
-
-	// Создаем шифр
-	block, err := aes.NewCipher(paddedKey)
-	if err != nil {
-		return nil, err
+	if currentPrinciple == nil {
+		currentPrinciple = crypto.NewDefaultPrinciple()
 	}
 
-	// Добавляем магическую подпись и хеш ключа для проверки правильности расшифровки
-	signatureSize := len(magicSignature)
-	keyHashSize := sha256.Size
+	// Создаем заголовок файла
+	header := make([]byte, 64)
+	copy(header[:8], magicSignature)
 
-	// Создаем вектор инициализации
-	ciphertext := make([]byte, signatureSize+keyHashSize+4+aes.BlockSize+len(data))
+	// Записываем принцип шифрования
+	principleBytes := currentPrinciple.Bytes()
+	if len(principleBytes) > 4 {
+		return nil, fmt.Errorf("размер принципа шифрования слишком большой: %d > 4", len(principleBytes))
+	}
+	copy(header[8:12], principleBytes)
 
-	// Добавляем магическую подпись
-	copy(ciphertext[:signatureSize], magicSignature)
-
-	// Добавляем хеш ключа (чтобы потом проверить правильность расшифровки)
+	// Генерируем хеш ключа
 	keyHash := sha256.Sum256([]byte(encryptionKey))
-	copy(ciphertext[signatureSize:signatureSize+keyHashSize], keyHash[:])
+	copy(header[12:44], keyHash[:])
 
-	// Добавляем размер оригинальных данных
-	binary.LittleEndian.PutUint32(ciphertext[signatureSize+keyHashSize:signatureSize+keyHashSize+4], uint32(len(data)))
+	// Заполняем размер данных
+	binary.LittleEndian.PutUint32(header[44:48], uint32(len(data)))
 
-	// Подготавливаем IV
-	iv := ciphertext[signatureSize+keyHashSize+4 : signatureSize+keyHashSize+4+aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+	// Генерируем IV
+	if _, err := io.ReadFull(rand.Reader, header[48:64]); err != nil {
 		return nil, err
 	}
 
 	// Шифруем данные
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[signatureSize+keyHashSize+4+aes.BlockSize:], data)
+	encryptedData := data
+	factory := &crypto.DefaultCipherFactory{}
 
-	return ciphertext, nil
+	for _, algo := range currentPrinciple.Algorithms {
+		cipher, err := factory.Create(algo)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := uint8(0); i < currentPrinciple.Passes; i++ {
+			encryptedData, err = cipher.Encrypt(encryptedData, GetPaddedKey(), header[48:64])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Объединяем заголовок и зашифрованные данные
+	result := make([]byte, 0, 64+len(encryptedData))
+	result = append(result, header...)
+	result = append(result, encryptedData...)
+
+	return result, nil
 }
 
 // DecryptData дешифрует содержимое файла
 func DecryptData(data []byte) ([]byte, error) {
 	LogDebug("Расшифровка данных размером %d байт", len(data))
 
-	signatureSize := len(magicSignature)
-	keyHashSize := sha256.Size
-	headerSize := signatureSize + keyHashSize + 4
-
-	// Проверяем длину данных
-	if len(data) < headerSize+aes.BlockSize {
+	// Проверяем минимальный размер
+	if len(data) < 64 {
 		err := errors.New("зашифрованные данные слишком короткие")
 		LogError("Ошибка расшифровки: %v", err)
 		return nil, err
 	}
 
 	// Проверяем магическую подпись
-	for i := 0; i < signatureSize; i++ {
+	for i := 0; i < 8; i++ {
 		if data[i] != magicSignature[i] {
 			err := errors.New("файл не имеет корректной подписи шифрования")
 			LogError("Ошибка расшифровки: %v", err)
@@ -115,12 +133,20 @@ func DecryptData(data []byte) ([]byte, error) {
 		}
 	}
 
+	// Извлекаем принцип шифрования
+	principleBytes := data[8:12]
+	principle, err := crypto.ParsePrincipleBytes(principleBytes)
+	if err != nil {
+		LogError("Ошибка парсинга принципа шифрования: %v", err)
+		return nil, err
+	}
+
 	// Проверяем хеш ключа
-	storedKeyHash := data[signatureSize : signatureSize+keyHashSize]
+	storedKeyHash := data[12:44]
 	currentKeyHash := sha256.Sum256([]byte(encryptionKey))
 
 	// Если хеш ключа не совпадает, значит ключ неверный
-	for i := 0; i < keyHashSize; i++ {
+	for i := 0; i < 32; i++ {
 		if storedKeyHash[i] != currentKeyHash[i] {
 			err := errors.New("неверный ключ расшифровки")
 			LogError("Ошибка расшифровки: %v", err)
@@ -129,35 +155,38 @@ func DecryptData(data []byte) ([]byte, error) {
 	}
 
 	// Получаем оригинальный размер данных
-	originalSize := binary.LittleEndian.Uint32(data[signatureSize+keyHashSize : signatureSize+keyHashSize+4])
+	originalSize := binary.LittleEndian.Uint32(data[44:48])
 	LogDebug("Ожидаемый оригинальный размер данных: %d байт", originalSize)
 
-	// Получаем расширенный ключ для AES-256
-	paddedKey := GetPaddedKey()
+	// Извлекаем IV и зашифрованные данные
+	iv := data[48:64]
+	ciphertext := data[64:]
 
-	// Создаем шифр
-	block, err := aes.NewCipher(paddedKey)
-	if err != nil {
-		LogError("Ошибка создания шифра AES: %v", err)
-		return nil, err
+	// Расшифровываем данные
+	factory := &crypto.DefaultCipherFactory{}
+	decryptedData := ciphertext
+
+	for _, algo := range principle.Algorithms {
+		cipher, err := factory.Create(algo)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := uint8(0); i < principle.Passes; i++ {
+			decryptedData, err = cipher.Decrypt(decryptedData, GetPaddedKey(), iv)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-
-	// Извлекаем вектор инициализации
-	iv := data[headerSize : headerSize+aes.BlockSize]
-	ciphertext := data[headerSize+aes.BlockSize:]
-
-	// Дешифруем данные
-	plaintext := make([]byte, len(ciphertext))
-	stream := cipher.NewCFBDecrypter(block, iv)
-	stream.XORKeyStream(plaintext, ciphertext)
 
 	// Обрезаем до оригинального размера
-	if uint32(len(plaintext)) >= originalSize {
-		plaintext = plaintext[:originalSize]
+	if uint32(len(decryptedData)) >= originalSize {
+		decryptedData = decryptedData[:originalSize]
 	}
 
-	LogDebug("Данные успешно расшифрованы, размер: %d байт", len(plaintext))
-	return plaintext, nil
+	LogDebug("Данные успешно расшифрованы, размер: %d байт", len(decryptedData))
+	return decryptedData, nil
 }
 
 // EncryptFile шифрует содержимое файла и перезаписывает его
